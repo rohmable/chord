@@ -20,14 +20,13 @@ configure_file("${ch_cfg}" "${CMAKE_CURRENT_BINARY_DIR}" COPYONLY)
 
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
-foreach(_target
-    chord)
+add_library(mail STATIC mail.cpp)
+target_link_libraries(mail nlohmann_json::nlohmann_json)
+target_include_directories(mail PUBLIC "../include/")
 
-    add_library(${_target} STATIC "${_target}.cpp" ${ch_proto_srcs} ${ch_grpc_srcs})
-    target_link_libraries(${_target} ${_GRPC_GRPCPP_UNSECURE} ${_PROTOBUF_LIBPROTOBUF} nlohmann_json::nlohmann_json ${LIBGCRYPT_LIBRARIES})
-    target_include_directories(${_target} PUBLIC "../include/")
-    
-endforeach()
+add_library(chord STATIC chord.cpp ${ch_proto_srcs} ${ch_grpc_srcs})
+target_link_libraries(chord mail ${_GRPC_GRPCPP_UNSECURE} ${_PROTOBUF_LIBPROTOBUF} nlohmann_json::nlohmann_json ${LIBGCRYPT_LIBRARIES})
+target_include_directories(chord PUBLIC "../include/")
 
 add_executable(chord_server main.cpp)
 target_link_libraries(chord_server chord)

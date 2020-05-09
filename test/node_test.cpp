@@ -34,7 +34,7 @@ const std::string& getRandomUser(std::vector<std::string> &users) {
     return users.at(distribution(generator));
 }
 
-class NodeTest : public ::testing::Test {
+class DISABLED_NodeTest : public ::testing::Test {
 protected:
     static void SetUpTestSuite() {
         using nlohmann::json;
@@ -85,19 +85,19 @@ protected:
     static std::vector<std::string> users_;
 };
 
-chord::Node *NodeTest::node0_ = nullptr;
-std::vector<chord::Node*> NodeTest::ring_;
-std::vector<std::string> NodeTest::users_;
+chord::Node *DISABLED_NodeTest::node0_ = nullptr;
+std::vector<chord::Node*> DISABLED_NodeTest::ring_;
+std::vector<std::string> DISABLED_NodeTest::users_;
 
-TEST_F(NodeTest, EmptyNode) {
+TEST_F(DISABLED_NodeTest, EmptyNode) {
     chord::Node n;
 }
 
-TEST_F(NodeTest, WithAddress) {
+TEST_F(DISABLED_NodeTest, WithAddress) {
     chord::Node n("127.0.0.1", 50005);
 }
 
-TEST_F(NodeTest, SendPing) {
+TEST_F(DISABLED_NodeTest, SendPing) {
     chord::NodeInfo info = node0_->getInfo();
     chord::PingRequest request;
     request.set_ping_n(0);
@@ -111,7 +111,7 @@ TEST_F(NodeTest, SendPing) {
     ASSERT_EQ(msg.ping_n(), request.ping_n()) << "Ping reply is different from what has been sent: " << msg.ping_n() << " != " << request.ping_n();
 }
 
-TEST_F(NodeTest, SendMultiplePing) {
+TEST_F(DISABLED_NodeTest, SendMultiplePing) {
     chord::NodeInfo info = node0_->getInfo();
     chord::PingRequest request;
     Client client(grpc::CreateChannel(
@@ -127,7 +127,7 @@ TEST_F(NodeTest, SendMultiplePing) {
     }
 }
 
-TEST_F(NodeTest, SetSuccessor) {
+TEST_F(DISABLED_NodeTest, SetSuccessor) {
     chord::Node n1("127.0.0.1", 50050),
                 n2("127.0.0.1", 50051);
     chord::NodeInfo n2_info = n2.getInfo();
@@ -140,7 +140,7 @@ TEST_F(NodeTest, SetSuccessor) {
     );
 }
 
-TEST_F(NodeTest, FingerTable) {
+TEST_F(DISABLED_NodeTest, FingerTable) {
     chord::key_t mod = std::pow(2, chord::M);
     for(auto node : ring_) {
         chord::key_t node_id = node->getInfo().id;
@@ -154,14 +154,14 @@ TEST_F(NodeTest, FingerTable) {
     }
 }
 
-TEST_F(NodeTest, CorrectPredecessor) {
+TEST_F(DISABLED_NodeTest, CorrectPredecessor) {
     ASSERT_TRUE(ring_.front()->getPredecessor().id == ring_.back()->getInfo().id);
     for(int i = 1; i < ring_.size(); i++) {
         ASSERT_TRUE(ring_.at(i)->getPredecessor().id == ring_.at(i-1)->getInfo().id);
     }
 }
 
-TEST_F(NodeTest, TestNodeJoinCorrectId) {
+TEST_F(DISABLED_NodeTest, TestNodeJoinCorrectId) {
     Client client(grpc::CreateChannel(
         node0_->getInfo().conn_string(), grpc::InsecureChannelCredentials()
     ));
@@ -172,7 +172,7 @@ TEST_F(NodeTest, TestNodeJoinCorrectId) {
     ASSERT_TRUE(msg.id() >= request.node_id());
 }
 
-TEST_F(NodeTest, TestNodeJoin) {
+TEST_F(DISABLED_NodeTest, TestNodeJoin) {
     chord::Node *new_node = new chord::Node("127.0.0.1", 60000);
     ring_.push_back(new_node);
     new_node->join(node0_->getInfo());
@@ -186,7 +186,7 @@ TEST_F(NodeTest, TestNodeJoin) {
     ringDot(ring_);
 }
 
-TEST_F(NodeTest, TestInsertAndLookup) {
+TEST_F(DISABLED_NodeTest, TestInsertAndLookup) {
     const std::string &user = getRandomUser(users_);
     auto[ins_key, ins_manager] = node0_->insert(user);
     auto[query_result, look_manager] = node0_->lookup(user);
@@ -194,7 +194,7 @@ TEST_F(NodeTest, TestInsertAndLookup) {
     ASSERT_TRUE(ins_manager.id == look_manager.id);
 }
 
-TEST_F(NodeTest, BulkInsertAndLookup) {
+TEST_F(DISABLED_NodeTest, BulkInsertAndLookup) {
     for(const auto &user : users_) {
         auto[ins_key, ins_manager] = node0_->insert(user);
         auto[query_result, look_manager] = node0_->lookup(user);

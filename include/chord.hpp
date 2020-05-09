@@ -1,11 +1,13 @@
 #ifndef CHORD_HPP
 #define CHORD_HPP
 
+#include <grpcpp/grpcpp.h>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
-#include <grpcpp/grpcpp.h>
 #include <map>
 #include "chord.grpc.pb.h"
+#include "mail.hpp"
 
 namespace chord {
     const int M = 48;
@@ -39,7 +41,9 @@ namespace chord {
         grpc::Status NodeJoin(grpc::ServerContext *context, const JoinRequest *request, NodeInfoMessage *reply) override;
         grpc::Status Stabilize(grpc::ServerContext *context, const NodeInfoMessage *request, NodeInfoMessage *reply) override;
         grpc::Status Insert(grpc::ServerContext *context, const InsertMessage *request, NodeInfoMessage *reply) override;
+        grpc::Status InsertMailbox(grpc::ServerContext *context, const InsertMailboxMessage *request, NodeInfoMessage *reply) override;
         grpc::Status Lookup(grpc::ServerContext *context, const Query *request, QueryResult *reply) override;
+        grpc::Status LookupMailbox(grpc::ServerContext *context, const QueryMailbox *request, QueryResult *reply);
 
         void buildFingerTable();
         const NodeInfo& getInfo() const;
@@ -49,6 +53,9 @@ namespace chord {
         const NodeInfo& getFinger(int idx) const;
         std::pair<key_t, NodeInfo> insert(const std::string &value);
         std::pair<std::string, const NodeInfo> lookup(const std::string &value);
+
+        std::pair<key_t, NodeInfo> insertMailbox(const mail::MailBox &box);
+        std::pair<std::string, const NodeInfo> lookupMailbox(const std::string &owner);
 
     private:
         template<class T, class R>
@@ -71,6 +78,7 @@ namespace chord {
         std::unique_ptr<grpc::Server> server_;
         std::unique_ptr<std::thread> node_thread_, stabilize_thread_;
         std::map<key_t, std::string> values_;
+        std::map<key_t, mail::MailBox> boxes_;
     };
 }
 

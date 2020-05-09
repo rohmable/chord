@@ -4,6 +4,7 @@
 #include <gcrypt.h>
 #include <cmath>
 #include <chrono>
+#include <utility>
 
 using grpc::Server;
 using grpc::ServerAsyncResponseWriter;
@@ -39,6 +40,7 @@ namespace chord {
 
     void copyNodeInfoMessage(chord::NodeInfoMessage &dst, const chord::NodeInfoMessage &src) {
         dst.set_ip(src.ip()); dst.set_port(src.port()); dst.set_id(src.id());
+        dst.set_cutoff(src.cutoff());
     }
 
     void copyNodeInfo(NodeInfo &dst, const NodeInfo &src) {
@@ -60,7 +62,11 @@ bool chord::operator==(const NodeInfo &lhs, const NodeInfo &rhs) {
 }
 
 inline bool chord::between(key_t key, const NodeInfo &lhs, const NodeInfo &rhs) {
-    return (key > lhs.id && (key <= rhs.id || lhs.id > rhs.id));
+    //Inserimento normale, inserimento in giunzione con chiave maggiore dell'ultimo nodo
+    //Inserimento in giunzione con chiave minore del primo nodo
+    //I nodi in questi casi cadranno sul rhs
+    return (key > lhs.id && (key <= rhs.id || lhs.id > rhs.id)) ||
+            (key <= rhs.id && key < lhs.id && rhs.id < lhs.id);
 }
 
 chord::Node::Node()
@@ -71,7 +77,8 @@ chord::Node::Node()
 chord::Node::Node(std::string address, int port) 
     : info_({.address = address, .port = port}) 
     , finger_table_(chord::M)
-    , values_() {
+    , values_()
+    , predecessor_({"", 0, -1}) {
     info_.id = hashString(info_.conn_string());
     Run();
 }
@@ -175,6 +182,27 @@ grpc::Status chord::Node::Insert(grpc::ServerContext *context, const InsertMessa
     return Status::OK;
 }
 
+grpc::Status chord::Node::InsertMailbox(grpc::ServerContext *context, const InsertMailboxMessage * request, NodeInfoMessage *reply) {
+    if(isSuccessor(request->key())) {
+        fillNodeInfoMessage(*reply, info_);
+        mail::MailBox box(request->owner());
+        boxes_.insert({request->key(), box});
+    } else {
+        if(request->cutoff() < 10) {
+            InsertMailboxMessage req;
+            req.set_key(request->key());
+            req.set_owner(request->owner());
+            req.set_cutoff(request->cutoff() + 1);
+            auto[result, rep] = sendMessage<InsertMailboxMessage, NodeInfoMessage>(&req, getFingerForKey(request->key()), &chord::NodeService::Stub::InsertMailbox);
+            copyNodeInfoMessage(*reply, rep);
+        } else {
+            fillNodeInfoMessage(*reply, info_);
+            reply->set_cutoff(true);
+        }
+    }
+    return Status::OK;
+}
+
 grpc::Status chord::Node::Lookup(grpc::ServerContext *context, const Query *request, QueryResult *reply) {
     NodeInfoMessage *manager = new NodeInfoMessage();
     try {
@@ -184,6 +212,23 @@ grpc::Status chord::Node::Lookup(grpc::ServerContext *context, const Query *requ
         reply->set_allocated_manager(manager);
     } catch (std::out_of_range) {
         auto[result, rep] = sendMessage<Query, QueryResult>(request, getFingerForKey(request->key()), &chord::NodeService::Stub::Lookup);
+        reply->set_value(rep.value());
+        reply->set_key(rep.key());
+        copyNodeInfoMessage(*manager, rep.manager());
+        reply->set_allocated_manager(manager);
+    }
+    return Status::OK;
+}
+
+grpc::Status chord::Node::LookupMailbox(grpc::ServerContext *context, const QueryMailbox *request, QueryResult *reply) {
+    NodeInfoMessage *manager = new NodeInfoMessage();
+    try {
+        reply->set_value(boxes_.at(request->key()).getOwner());
+        reply->set_key(request->key());
+        fillNodeInfoMessage(*manager, info_);
+        reply->set_allocated_manager(manager);
+    } catch (std::out_of_range) {
+        auto[result, rep] = sendMessage<QueryMailbox, QueryResult>(request, getFingerForKey(request->key()), &chord::NodeService::Stub::LookupMailbox);
         reply->set_value(rep.value());
         reply->set_key(rep.key());
         copyNodeInfoMessage(*manager, rep.manager());
@@ -248,7 +293,7 @@ std::pair<chord::key_t, chord::NodeInfo> chord::Node::insert(const std::string &
         auto[result, reply] = sendMessage<InsertMessage, NodeInfoMessage>(&request, info_, &chord::NodeService::Stub::Insert);
         fillNodeInfo(ret, reply);
     }
-    return std::pair<key_t, NodeInfo>(key, ret);
+    return std::pair<chord::key_t, chord::NodeInfo>(key, ret);
 }
 
 std::pair<std::string, const chord::NodeInfo> chord::Node::lookup(const std::string &value) {
@@ -266,7 +311,44 @@ std::pair<std::string, const chord::NodeInfo> chord::Node::lookup(const std::str
         fillNodeInfo(ret_manager, reply.manager());
         
     }
-    return std::pair<std::string, const NodeInfo>(ret_val, ret_manager);
+    return std::pair<std::string, const chord::NodeInfo>(ret_val, ret_manager);
+}
+
+std::pair<chord::key_t, chord::NodeInfo> chord::Node::insertMailbox(const mail::MailBox &box) {
+    key_t key = hashString(box.getOwner());
+    NodeInfo ret;
+    if(isSuccessor(key)) {
+        boxes_.insert({key, box});
+        copyNodeInfo(ret, info_);
+    } else {
+        InsertMailboxMessage request;
+        request.set_key(key);
+        request.set_owner(box.getOwner());
+        request.set_cutoff(0);
+        auto[result, reply] = sendMessage<InsertMailboxMessage, NodeInfoMessage>(&request, info_, &chord::NodeService::Stub::InsertMailbox);
+        if(reply.cutoff()) {
+            std::cout << "Something went wrong" << std::endl;
+        }
+        fillNodeInfo(ret, reply);
+    }
+    return std::pair<chord::key_t, chord::NodeInfo>(key, ret);
+}
+
+std::pair<std::string, const chord::NodeInfo> chord::Node::lookupMailbox(const std::string &owner) {
+    key_t key = hashString(owner);
+    std::string ret_val;
+    NodeInfo ret_manager;
+    try {
+        ret_val = boxes_.at(key).getOwner();
+        copyNodeInfo(ret_manager, info_);
+    } catch (std::out_of_range) {
+        QueryMailbox request;
+        request.set_key(key);
+        auto[result, reply] = sendMessage<QueryMailbox, QueryResult>(&request, getFingerForKey(key), &chord::NodeService::Stub::LookupMailbox);
+        ret_val = reply.value();
+        fillNodeInfo(ret_manager, reply.manager());
+    }
+    return std::pair<std::string, const chord::NodeInfo>(ret_val, ret_manager);
 }
 
 const chord::NodeInfo& chord::Node::getFingerForKey(key_t key) {
@@ -294,6 +376,6 @@ void chord::Node::stabilize() {
             fillNodeInfo(finger_table_.front(), reply);
             buildFingerTable();
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
 }

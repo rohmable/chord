@@ -8,13 +8,16 @@ service NodeService {
     rpc NodeJoin (JoinRequest) returns (NodeInfoMessage) {}
     rpc Stabilize (NodeInfoMessage) returns (NodeInfoMessage) {}
     rpc Insert (InsertMessage) returns (NodeInfoMessage) {}
+    rpc InsertMailbox (InsertMailboxMessage) returns (NodeInfoMessage) {}
     rpc Lookup (Query) returns (QueryResult) {}
+    rpc LookupMailbox (QueryMailbox) returns (QueryResult) {}
 }
 
 message NodeInfoMessage {
     string ip = 1;
     int32 port = 2;
     int64 id = 3;
+    bool cutoff = 4;
 }
 
 message FingerQuestion {
@@ -31,8 +34,18 @@ message InsertMessage {
     string value = 2;
 }
 
+message InsertMailboxMessage {
+    int64 key = 1;
+    string owner = 2;
+    int64 cutoff = 3;
+}
+
+message QueryMailbox {
+    int64 key = 1;
+}
+
 message Query {
-    int64 key = 2;
+    int64 key = 1;
 }
 
 message QueryResult {
