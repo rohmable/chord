@@ -21,7 +21,7 @@ configure_file("${ch_cfg}" "${CMAKE_CURRENT_BINARY_DIR}" COPYONLY)
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(mail STATIC mail.cpp)
-target_link_libraries(mail nlohmann_json::nlohmann_json)
+target_link_libraries(mail nlohmann_json::nlohmann_json ${LIBGCRYPT_LIBRARIES})
 target_include_directories(mail PUBLIC "../include/")
 
 add_library(chord STATIC chord.cpp ${ch_proto_srcs} ${ch_grpc_srcs})

@@ -1,6 +1,21 @@
 #include "mail.hpp"
 #include <iostream>
 #include <fstream>
+#include <gcrypt.h>
+
+long long int mail::hashPsw(const std::string &str) {
+    unsigned int id_length = gcry_md_get_algo_dlen(GCRY_MD_SHA1);
+    unsigned char *x = new unsigned char[id_length];
+    gcry_md_hash_buffer(GCRY_MD_SHA1, x, str.c_str(), str.size());
+    char *buffer = new char[id_length];
+    std::string hash;
+    for(int i = 0; i < id_length; i += sizeof(int)) {
+        sprintf(buffer, "%d", x[i]);
+        hash += buffer;
+    }
+    delete x;
+    return std::stoll(hash);
+}
 
 mail::Message::Message()
     : to("")
@@ -54,8 +69,19 @@ std::ostream& mail::operator<<(std::ostream& os, const Message &msg) {
     return os;
 }
 
-mail::MailBox::MailBox(const std::string &owner)
+mail::MailBox::MailBox()
+    : owner_("")
+    , psw_(0)
+    , box_() {}
+
+mail::MailBox::MailBox(const std::string &owner, const std::string &psw)
     : owner_(owner)
+    , psw_(hashPsw(psw))
+    , box_() {}
+
+mail::MailBox::MailBox(const std::string &owner, long long int psw)
+    : owner_(owner)
+    , psw_(psw)
     , box_() {}
 
 void mail::MailBox::setOwner(const std::string &owner) {
@@ -63,6 +89,12 @@ void mail::MailBox::setOwner(const std::string &owner) {
 }
 
 const std::string& mail::MailBox::getOwner() const { return owner_; }
+
+void mail::MailBox::setPassword(const std::string &psw) { psw_ = hashPsw(psw); }
+
+void mail::MailBox::setPassword(long long int psw) { psw_ = psw; }
+
+long long int mail::MailBox::getPassword() const { return psw_; }
 
 int mail::MailBox::getSize() const { return box_.size(); }
 
@@ -98,7 +130,7 @@ bool mail::MailBox::saveBox(const std::string &filename) const {
 mail::MailBox mail::loadBox(const std::string &filename) {
     std::ifstream f(filename);
     if (!f.is_open()) {
-        return MailBox();
+        return MailBox("", 0);
     }
     nlohmann::json box;
     f >> box;
@@ -109,12 +141,14 @@ mail::MailBox mail::loadBox(const std::string &filename) {
 void mail::to_json(nlohmann::json &j, const MailBox &box) {
     j = nlohmann::json{
         {"owner", box.getOwner()}, 
+        {"password", box.getPassword()},
         {"box", box.getMessages()}
     };
 }
     
 void mail::from_json(const nlohmann::json &j, MailBox &box) {
     box.setOwner(j.at("owner").get<std::string>());
+    box.setPassword(j.at("password").get<long long int>());
     for(auto &msg : j.at("box")) {
         box.insertMessage(msg.get<mail::Message>());
     }

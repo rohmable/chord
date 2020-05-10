@@ -5,6 +5,7 @@
 #include <cmath>
 #include <chrono>
 #include <utility>
+#include <google/protobuf/util/time_util.h>
 
 using grpc::Server;
 using grpc::ServerAsyncResponseWriter;
@@ -21,7 +22,7 @@ namespace chord {
         long long int mod = std::pow(2, M);
         char *buffer = new char[id_length];
         std::string hash;
-        for(int i = 0; i < M/8; i++) {
+        for(int i = 0; i < id_length; i+= sizeof(int)) {
             sprintf(buffer, "%d", x[i]);
             hash += buffer;
         }
@@ -45,6 +46,21 @@ namespace chord {
 
     void copyNodeInfo(NodeInfo &dst, const NodeInfo &src) {
         dst.address = src.address; dst.port = src.port; dst.id = src.id;
+    }
+
+    void fillMessage(mail::Message &dst, const chord::MailboxMessage &src) {
+        using google::protobuf::util::TimeUtil;
+        using google::protobuf::Timestamp;
+        dst.to = src.to(); dst.from = src.from(); dst.subject = src.subject();
+        dst.body = src.body(); dst.date = TimeUtil::TimestampToTimeT(TimeUtil::SecondsToTimestamp(src.date()));
+    }
+
+    void fillMailboxMessage(chord::MailboxMessage &dst, const mail::Message &src) {
+        using google::protobuf::util::TimeUtil;
+        using google::protobuf::Timestamp;
+        dst.set_to(src.to); dst.set_from(src.from); dst.set_subject(src.subject);
+        dst.set_body(src.body);
+        dst.set_date(TimeUtil::TimestampToSeconds(TimeUtil::TimeTToTimestamp(src.date)));
     }
 }
 
@@ -185,14 +201,15 @@ grpc::Status chord::Node::Insert(grpc::ServerContext *context, const InsertMessa
 grpc::Status chord::Node::InsertMailbox(grpc::ServerContext *context, const InsertMailboxMessage * request, NodeInfoMessage *reply) {
     if(isSuccessor(request->key())) {
         fillNodeInfoMessage(*reply, info_);
-        mail::MailBox box(request->owner());
+        mail::MailBox box(request->owner(), request->password());
         boxes_.insert({request->key(), box});
     } else {
-        if(request->cutoff() < 10) {
+        if(request->ttl() > 0) {
             InsertMailboxMessage req;
             req.set_key(request->key());
             req.set_owner(request->owner());
-            req.set_cutoff(request->cutoff() + 1);
+            req.set_password(request->password());
+            req.set_ttl(request->ttl() - 1);
             auto[result, rep] = sendMessage<InsertMailboxMessage, NodeInfoMessage>(&req, getFingerForKey(request->key()), &chord::NodeService::Stub::InsertMailbox);
             copyNodeInfoMessage(*reply, rep);
         } else {
@@ -220,6 +237,17 @@ grpc::Status chord::Node::Lookup(grpc::ServerContext *context, const Query *requ
     return Status::OK;
 }
 
+grpc::Status chord::Node::Authenticate(grpc::ServerContext *context, const Authentication *request, StatusMessage *reply) {
+    key_t key = hashString(request->user());
+    try {
+        auto box = boxes_.at(key);
+        reply->set_result(box.getPassword() == request->psw());
+    } catch (std::out_of_range) {
+        reply->set_result(false);
+    }
+    return Status::OK;
+}
+
 grpc::Status chord::Node::LookupMailbox(grpc::ServerContext *context, const QueryMailbox *request, QueryResult *reply) {
     NodeInfoMessage *manager = new NodeInfoMessage();
     try {
@@ -233,6 +261,43 @@ grpc::Status chord::Node::LookupMailbox(grpc::ServerContext *context, const Quer
         reply->set_key(rep.key());
         copyNodeInfoMessage(*manager, rep.manager());
         reply->set_allocated_manager(manager);
+    }
+    return Status::OK;
+}
+
+grpc::Status chord::Node::Send(grpc::ServerContext *context, const MailboxMessage *request, StatusMessage *reply) {
+    try {
+        key_t key = hashString(request->to());
+        mail::MailBox &box = boxes_.at(key);
+        if(checkAuthentication(request->auth())) {
+            mail::Message msg;
+            fillMessage(msg, *request);
+            box.insertMessage(msg);
+            reply->set_result(true);
+        } else {
+            reply->set_result(false);
+        }
+    } catch (std::out_of_range &e) {
+        reply->set_result(false);
+    }
+    return Status::OK;
+}
+
+grpc::Status chord::Node::Receive(grpc::ServerContext *context, const MailboxRequest *request, Mailbox *reply) {
+    try {
+        key_t key = hashString(request->owner());
+        mail::MailBox &box = boxes_.at(key);
+        if(box.getPassword() == request->password()) {
+            for(auto msg : box.getMessages()) {
+                MailboxMessage *message = reply->add_messages();
+                fillMailboxMessage(*message, msg);
+            }
+            reply->set_valid(true);
+        } else {
+            reply->set_valid(false);
+        }
+    } catch (std::out_of_range) {
+        reply->set_valid(false);
     }
     return Status::OK;
 }
@@ -324,7 +389,8 @@ std::pair<chord::key_t, chord::NodeInfo> chord::Node::insertMailbox(const mail::
         InsertMailboxMessage request;
         request.set_key(key);
         request.set_owner(box.getOwner());
-        request.set_cutoff(0);
+        request.set_password(box.getPassword());
+        request.set_ttl(10);
         auto[result, reply] = sendMessage<InsertMailboxMessage, NodeInfoMessage>(&request, info_, &chord::NodeService::Stub::InsertMailbox);
         if(reply.cutoff()) {
             std::cout << "Something went wrong" << std::endl;
@@ -346,6 +412,9 @@ std::pair<std::string, const chord::NodeInfo> chord::Node::lookupMailbox(const s
         request.set_key(key);
         auto[result, reply] = sendMessage<QueryMailbox, QueryResult>(&request, getFingerForKey(key), &chord::NodeService::Stub::LookupMailbox);
         ret_val = reply.value();
+        if(reply.manager().cutoff()) {
+            throw std::out_of_range("Mailbox not found");
+        }
         fillNodeInfo(ret_manager, reply.manager());
     }
     return std::pair<std::string, const chord::NodeInfo>(ret_val, ret_manager);
@@ -365,6 +434,17 @@ const chord::NodeInfo& chord::Node::getFingerForKey(key_t key) {
 
 bool chord::Node::isSuccessor(key_t key) {
     return between(key, predecessor_, info_);
+}
+
+bool chord::Node::checkAuthentication(const chord::Authentication &auth) {
+    key_t key = hashString(auth.user());
+    QueryMailbox query;
+    query.set_key(key);
+    auto[res, n] = sendMessage<QueryMailbox, QueryResult>(&query, getFingerForKey(key), &chord::NodeService::Stub::LookupMailbox);
+    NodeInfo node;
+    fillNodeInfo(node, n.manager());
+    auto[result, authenticated] = sendMessage<Authentication, StatusMessage>(&auth, node, &chord::NodeService::Stub::Authenticate);
+    return authenticated.result();
 }
 
 void chord::Node::stabilize() {

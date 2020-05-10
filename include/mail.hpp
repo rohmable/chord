@@ -8,6 +8,8 @@
 #include <nlohmann/json.hpp>
 
 namespace mail {
+    long long int hashPsw(const std::string &str);
+
     struct Message {
         Message();
         Message(const std::string &to_, const std::string &from_, const std::string &subject_, const std::string &body_, std::time_t date_ = std::time(nullptr));
@@ -28,9 +30,14 @@ namespace mail {
 
     class MailBox {
     public:
-        MailBox(const std::string &owner = "");
+        MailBox();
+        MailBox(const std::string &owner, const std::string &psw);
+        MailBox(const std::string &owner, long long int psw);
         void setOwner(const std::string &owner);
         const std::string& getOwner() const;
+        void setPassword(const std::string &psw);
+        void setPassword(long long int psw);
+        long long int getPassword() const;
         int getSize() const;
         const std::vector<Message>& getMessages() const;
         const Message& getMessage(int i) const;
@@ -41,6 +48,7 @@ namespace mail {
 
     private:
         std::string owner_;
+        long long int psw_;
         std::vector<Message> box_;
     };
 

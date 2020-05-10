@@ -3,6 +3,12 @@
 Client::Client(std::shared_ptr<grpc::Channel> channel)
     : stub_(chord::NodeService::NewStub(channel)) {}
 
+Client::Client(const std::string &conn_string)
+    : stub_(chord::NodeService::NewStub(grpc::CreateChannel(conn_string, grpc::InsecureChannelCredentials()))) {}
+
+Client::Client(const chord::NodeInfo &node)
+    : stub_(chord::NodeService::NewStub(grpc::CreateChannel(node.conn_string(), grpc::InsecureChannelCredentials()))) {}
+
 std::pair<grpc::Status, chord::PingReply> Client::SendPing(int ping_n) {
     chord::PingRequest request;
     chord::PingReply reply;

@@ -10,6 +10,8 @@
 class Client {
 public:
     explicit Client(std::shared_ptr<grpc::Channel> channel);
+    explicit Client(const std::string &conn_string);
+    explicit Client(const chord::NodeInfo &node);
 
     std::pair<grpc::Status, chord::PingReply> SendPing(int ping_n);
     template<class T, class R>

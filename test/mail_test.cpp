@@ -10,7 +10,7 @@
 
 class MailTest : public ::testing::Test {
 protected:
-    static void SetUpTestSuite() {
+    static void SetUpTestCase() {
         using nlohmann::json;
 
         std::ifstream mock_file("mock_data.json");
@@ -19,6 +19,9 @@ protected:
         mock_file.close();
         for(auto &user : mock_data.at("users")) {
             users_.push_back(user.at("address").get<std::string>());
+        }
+        for(auto &password : mock_data.at("passwords")) {
+            passwords_.push_back(password.at("password").get<std::string>());
         }
         for(auto &subject : mock_data.at("subjects")) {
             subjects_.push_back(subject.at("subject").get<std::string>());
@@ -68,16 +71,19 @@ protected:
         static std::random_device dev;
         static std::mt19937 rng(dev());
         static std::uniform_int_distribution<std::mt19937::result_type> dist_users(0, users_.size() - 1);
+        static std::uniform_int_distribution<std::mt19937::result_type> dist_passwords(0, passwords_.size() - 1);
 
-        return mail::MailBox(users_.at(dist_users(rng)));
+        return mail::MailBox(users_.at(dist_users(rng)), passwords_.at(dist_passwords(rng)));
     }
 
     static std::vector<std::string> users_,
+                                    passwords_,
                                     subjects_,
                                     bodies_;
 };
 
 std::vector<std::string> MailTest::users_;
+std::vector<std::string> MailTest::passwords_;
 std::vector<std::string> MailTest::subjects_;
 std::vector<std::string> MailTest::bodies_;
 

@@ -43,7 +43,10 @@ namespace chord {
         grpc::Status Insert(grpc::ServerContext *context, const InsertMessage *request, NodeInfoMessage *reply) override;
         grpc::Status InsertMailbox(grpc::ServerContext *context, const InsertMailboxMessage *request, NodeInfoMessage *reply) override;
         grpc::Status Lookup(grpc::ServerContext *context, const Query *request, QueryResult *reply) override;
+        grpc::Status Authenticate(grpc::ServerContext *context, const Authentication *request, StatusMessage *reply);
         grpc::Status LookupMailbox(grpc::ServerContext *context, const QueryMailbox *request, QueryResult *reply);
+        grpc::Status Send(grpc::ServerContext *context, const MailboxMessage *request, StatusMessage *reply);
+        grpc::Status Receive(grpc::ServerContext *context, const MailboxRequest *request, Mailbox *reply);
 
         void buildFingerTable();
         const NodeInfo& getInfo() const;
@@ -68,6 +71,7 @@ namespace chord {
 
         const NodeInfo& getFingerForKey(key_t key);
         bool isSuccessor(key_t key);
+        bool checkAuthentication(const chord::Authentication &auth);
 
         bool run_stabilize_;
         void stabilize();

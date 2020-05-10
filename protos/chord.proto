@@ -11,6 +11,9 @@ service NodeService {
     rpc InsertMailbox (InsertMailboxMessage) returns (NodeInfoMessage) {}
     rpc Lookup (Query) returns (QueryResult) {}
     rpc LookupMailbox (QueryMailbox) returns (QueryResult) {}
+    rpc Authenticate (Authentication) returns (StatusMessage) {}
+    rpc Send (MailboxMessage) returns (StatusMessage) {}
+    rpc Receive (MailboxRequest) returns (Mailbox) {}
 }
 
 message NodeInfoMessage {
@@ -34,14 +37,43 @@ message InsertMessage {
     string value = 2;
 }
 
+message Authentication {
+    string user = 1;
+    int64 psw = 2;
+}
+
 message InsertMailboxMessage {
     int64 key = 1;
     string owner = 2;
-    int64 cutoff = 3;
+    int64 password = 3;
+    int64 ttl = 4;
 }
 
 message QueryMailbox {
     int64 key = 1;
+}
+
+message MailboxMessage {
+    Authentication auth = 1;
+    string to = 2;
+    string from = 3;
+    string subject = 4;
+    string body = 5;
+    int64 date = 6;
+}
+
+message MailboxRequest {
+    string owner = 1;
+    int64 password = 2;
+}
+
+message Mailbox {
+    repeated MailboxMessage messages = 1;
+    bool valid = 2;
+}
+
+message StatusMessage {
+    bool result = 1;
 }
 
 message Query {

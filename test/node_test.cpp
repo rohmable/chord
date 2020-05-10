@@ -36,7 +36,7 @@ const std::string& getRandomUser(std::vector<std::string> &users) {
 
 class DISABLED_NodeTest : public ::testing::Test {
 protected:
-    static void SetUpTestSuite() {
+    static void SetUpTestCase() {
         using nlohmann::json;
 
         std::ifstream cfg_file("cfg.test.json");
@@ -101,8 +101,7 @@ TEST_F(DISABLED_NodeTest, SendPing) {
     chord::NodeInfo info = node0_->getInfo();
     chord::PingRequest request;
     request.set_ping_n(0);
-    Client client(grpc::CreateChannel(
-        info.conn_string(), grpc::InsecureChannelCredentials()));
+    Client client(info);
     auto[result, msg] = client.sendMessage<chord::PingRequest, chord::PingReply>(&request, &chord::NodeService::Stub::Ping);
     ASSERT_TRUE(result.ok());
     ASSERT_EQ(msg.ping_id(), info.id);
@@ -114,8 +113,7 @@ TEST_F(DISABLED_NodeTest, SendPing) {
 TEST_F(DISABLED_NodeTest, SendMultiplePing) {
     chord::NodeInfo info = node0_->getInfo();
     chord::PingRequest request;
-    Client client(grpc::CreateChannel(
-        info.conn_string(), grpc::InsecureChannelCredentials()));
+    Client client(info);
     for (int i = 0; i < 500; i++) {
         request.set_ping_n(i);
         auto[result, msg] = client.sendMessage<chord::PingRequest, chord::PingReply>(&request, &chord::NodeService::Stub::Ping);
@@ -162,9 +160,7 @@ TEST_F(DISABLED_NodeTest, CorrectPredecessor) {
 }
 
 TEST_F(DISABLED_NodeTest, TestNodeJoinCorrectId) {
-    Client client(grpc::CreateChannel(
-        node0_->getInfo().conn_string(), grpc::InsecureChannelCredentials()
-    ));
+    Client client(node0_->getInfo());
     chord::JoinRequest request;
     request.set_node_id(1234321);
     auto[result, msg] = client.sendMessage<chord::JoinRequest, chord::NodeInfoMessage>(&request, &chord::NodeService::Stub::NodeJoin);
