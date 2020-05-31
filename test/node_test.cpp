@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 #include <grpcpp/grpcpp.h>
 #include <cmath>
 #include <memory>
@@ -9,13 +10,14 @@
 #include <vector>
 #include <chrono>
 #include <random>
-#include <nlohmann/json.hpp>
+#include <google/protobuf/util/time_util.h>
 
 #include <chord.hpp>
+#include <mail.hpp>
 #include <chord.grpc.pb.h>
 #include "test_client.hpp"
 
-void ringDot(std::vector<chord::Node*> &ring) {
+void ringDot(const std::vector<chord::Node*> &ring) {
     std::ofstream dot("ring.gv");
     if(dot.is_open()) {
         dot << "digraph Ring {" << std::endl;
@@ -28,89 +30,121 @@ void ringDot(std::vector<chord::Node*> &ring) {
     }
 }
 
-const std::string& getRandomUser(std::vector<std::string> &users) {
-    std::default_random_engine generator;
-    std::uniform_int_distribution<int> distribution(0, users.size());
-    return users.at(distribution(generator));
-}
-
-class DISABLED_NodeTest : public ::testing::Test {
+class NodeTest : public ::testing::Test {
 protected:
     static void SetUpTestCase() {
+        ring_ = new chord::Ring("cfg.test.json");
+        node0_ = ring_->getEntryNode();
+        
         using nlohmann::json;
 
-        std::ifstream cfg_file("cfg.test.json");
-        json cfg;
-        cfg_file >> cfg;
-        cfg_file.close();
-        json nodes = cfg.at("entities");
-        for(auto &node : nodes) {
-            std::string address = node.at("address").get<std::string>();
-            int port = node.at("port").get<int>();
-            ring_.push_back(new chord::Node(address, port));
-        }
-        std::sort(ring_.begin(), ring_.end(), [](chord::Node *lhs, chord::Node *rhs) {
-            return lhs->getInfo().id < rhs->getInfo().id;
-        });
-        for(int i = 0; i < ring_.size() - 1; i++) {
-            ring_[i]->setSuccessor(ring_[i+1]->getInfo());
-        }
-        ring_.back()->setSuccessor(ring_.front()->getInfo());
-        node0_ = ring_.front();
-        for(auto node : ring_) {
-            node->buildFingerTable();
-        }
-
-        ringDot(ring_);
-
         std::ifstream mock_file("mock_data.json");
-        json mock;
-        mock_file >> mock;
+        json mock_data;
+        mock_file >> mock_data;
         mock_file.close();
-        json users = mock.at("users");
-        for(auto &node : nodes) {
-            users_.push_back(node.at("address").get<std::string>());
+        for(auto &user : mock_data.at("users")) {
+            users_.push_back(user.at("address").get<std::string>());
+        }
+        for(auto &password : mock_data.at("passwords")) {
+            passwords_.push_back(password.at("password").get<std::string>());
+        }
+        for(auto &subject : mock_data.at("subjects")) {
+            subjects_.push_back(subject.at("subject").get<std::string>());
+        }
+        for(auto &body : mock_data.at("bodies")) {
+            bodies_.push_back(body.at("body").get<std::string>());
         }
     }
 
-    static void TearDownTestSuite() {
-        for(auto node : ring_) {
-            node->Stop();
-            delete node;
-        }
+    static void TearDownTestCase() {
+        delete ring_;
     }
 
-    static std::vector<chord::Node *> ring_;
+    static mail::Message getRandomMessage(const std::string &to) {
+        static std::random_device dev;
+        static std::mt19937 rng(dev());
+        static std::uniform_int_distribution<std::mt19937::result_type> dist_users(0, users_.size() - 1);
+        static std::uniform_int_distribution<std::mt19937::result_type> dist_subjects(0, subjects_.size() - 1);
+        static std::uniform_int_distribution<std::mt19937::result_type> dist_bodies(0, bodies_.size() - 1);
+
+        int from_idx = dist_users(rng),
+            subject_idx = dist_subjects(rng),
+            body_idx = dist_bodies(rng);
+
+        return mail::Message(
+            to, 
+            users_.at(from_idx), 
+            subjects_.at(subject_idx),
+            bodies_.at(body_idx));
+    }
+
+    static std::vector<mail::Message> getRandomMessages(const std::string &to) {
+        static std::random_device dev;
+        static std::mt19937 rng(dev());
+        static std::uniform_int_distribution<std::mt19937::result_type> dist(0, 50);
+
+        std::vector<mail::Message> ret;
+        int num_msg = dist(rng);
+        for(int i = 0; i < num_msg; i++) {
+            ret.push_back(getRandomMessage(to));
+        }
+        return ret;
+    }
+
+    static mail::MailBox getRandomMailbox() {
+        static std::random_device dev;
+        static std::mt19937 rng(dev());
+        static std::uniform_int_distribution<std::mt19937::result_type> dist_users(0, users_.size() - 1);
+        static std::uniform_int_distribution<std::mt19937::result_type> dist_passwords(0, passwords_.size() - 1);
+
+        return mail::MailBox(users_[dist_users(rng)], passwords_[dist_passwords(rng)]);
+    }
+
+    static chord::Ring *ring_;
     static chord::Node *node0_;
-    static std::vector<std::string> users_;
+    static std::vector<std::string> users_,
+                                    passwords_,
+                                    subjects_,
+                                    bodies_;
 };
 
-chord::Node *DISABLED_NodeTest::node0_ = nullptr;
-std::vector<chord::Node*> DISABLED_NodeTest::ring_;
-std::vector<std::string> DISABLED_NodeTest::users_;
 
-TEST_F(DISABLED_NodeTest, EmptyNode) {
+chord::Ring *NodeTest::ring_;
+chord::Node *NodeTest::node0_ = nullptr;
+std::vector<std::string> NodeTest::users_;
+std::vector<std::string> NodeTest::passwords_;
+std::vector<std::string> NodeTest::subjects_;
+std::vector<std::string> NodeTest::bodies_;
+
+time_t secondsToTimeT(google::protobuf::int64 sec) {
+    using google::protobuf::util::TimeUtil;
+    return TimeUtil::TimestampToTimeT(TimeUtil::SecondsToTimestamp(sec));
+}
+
+google::protobuf::int64 timeTToSeconds(time_t time) {
+    using google::protobuf::util::TimeUtil;
+    return TimeUtil::TimestampToSeconds(TimeUtil::TimeTToTimestamp(time));
+}
+
+void fillMailboxMessage(chord::MailboxMessage &dst, const mail::Message &src, const mail::MailBox &box) {
+    chord::Authentication *auth = new chord::Authentication;
+    auth->set_user(box.getOwner());
+    auth->set_psw(box.getPassword());
+    dst.set_allocated_auth(auth);
+    dst.set_to(src.to); dst.set_from(src.from); dst.set_subject(src.subject);
+    dst.set_body(src.body);
+    dst.set_date(timeTToSeconds(src.date));
+}
+
+TEST_F(NodeTest, EmptyNode) {
     chord::Node n;
 }
 
-TEST_F(DISABLED_NodeTest, WithAddress) {
-    chord::Node n("127.0.0.1", 50005);
+TEST_F(NodeTest, WithAddress) {
+    chord::Node n("0.0.0.0", 60005);
 }
 
-TEST_F(DISABLED_NodeTest, SendPing) {
-    chord::NodeInfo info = node0_->getInfo();
-    chord::PingRequest request;
-    request.set_ping_n(0);
-    Client client(info);
-    auto[result, msg] = client.sendMessage<chord::PingRequest, chord::PingReply>(&request, &chord::NodeService::Stub::Ping);
-    ASSERT_TRUE(result.ok());
-    ASSERT_EQ(msg.ping_id(), info.id);
-    ASSERT_EQ(msg.ping_ip(), info.address);
-    ASSERT_EQ(msg.ping_port(), info.port);
-    ASSERT_EQ(msg.ping_n(), request.ping_n()) << "Ping reply is different from what has been sent: " << msg.ping_n() << " != " << request.ping_n();
-}
-
-TEST_F(DISABLED_NodeTest, SendMultiplePing) {
+TEST_F(NodeTest, SendPing) {
     chord::NodeInfo info = node0_->getInfo();
     chord::PingRequest request;
     Client client(info);
@@ -125,7 +159,7 @@ TEST_F(DISABLED_NodeTest, SendMultiplePing) {
     }
 }
 
-TEST_F(DISABLED_NodeTest, SetSuccessor) {
+TEST_F(NodeTest, SetSuccessor) {
     chord::Node n1("127.0.0.1", 50050),
                 n2("127.0.0.1", 50051);
     chord::NodeInfo n2_info = n2.getInfo();
@@ -138,9 +172,9 @@ TEST_F(DISABLED_NodeTest, SetSuccessor) {
     );
 }
 
-TEST_F(DISABLED_NodeTest, FingerTable) {
+TEST_F(NodeTest, FingerTable) {
     chord::key_t mod = std::pow(2, chord::M);
-    for(auto node : ring_) {
+    for(auto node : ring_->getNodes()) {
         chord::key_t node_id = node->getInfo().id;
         for(int i = 0; i < chord::M; i++) {
             chord::key_t finger_id = node->getFinger(i).id,
@@ -152,14 +186,15 @@ TEST_F(DISABLED_NodeTest, FingerTable) {
     }
 }
 
-TEST_F(DISABLED_NodeTest, CorrectPredecessor) {
-    ASSERT_TRUE(ring_.front()->getPredecessor().id == ring_.back()->getInfo().id);
-    for(int i = 1; i < ring_.size(); i++) {
-        ASSERT_TRUE(ring_.at(i)->getPredecessor().id == ring_.at(i-1)->getInfo().id);
+TEST_F(NodeTest, CorrectPredecessor) {
+    auto &nodes = ring_->getNodes();
+    ASSERT_TRUE(nodes.front()->getPredecessor().id == nodes.back()->getInfo().id);
+    for(int i = 1; i < nodes.size(); i++) {
+        ASSERT_TRUE(nodes[i]->getPredecessor().id == nodes[i-1]->getInfo().id);
     }
 }
 
-TEST_F(DISABLED_NodeTest, TestNodeJoinCorrectId) {
+TEST_F(NodeTest, TestNodeJoinCorrectId) {
     Client client(node0_->getInfo());
     chord::JoinRequest request;
     request.set_node_id(1234321);
@@ -168,33 +203,81 @@ TEST_F(DISABLED_NodeTest, TestNodeJoinCorrectId) {
     ASSERT_TRUE(msg.id() >= request.node_id());
 }
 
-TEST_F(DISABLED_NodeTest, TestNodeJoin) {
+TEST_F(NodeTest, TestNodeJoin) {
     chord::Node *new_node = new chord::Node("127.0.0.1", 60000);
-    ring_.push_back(new_node);
+    ring_->push_back(new_node);
     new_node->join(node0_->getInfo());
-    std::sort(ring_.begin(), ring_.end(), [](const chord::Node *lhs, const chord::Node *rhs) {
-        return lhs->getInfo().id < rhs->getInfo().id;
-    });
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    for(int i = 0; i < ring_.size() - 1; i++) {
-        ASSERT_EQ(ring_[i]->getSuccessor().id, ring_[i+1]->getInfo().id);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    auto &nodes = ring_->getNodes();
+    for(int i = 0; i < nodes.size() - 1; i++) {
+        ASSERT_EQ(nodes[i]->getSuccessor().id, nodes[i+1]->getInfo().id);
     }
-    ringDot(ring_);
+    ringDot(nodes);
 }
 
-TEST_F(DISABLED_NodeTest, TestInsertAndLookup) {
-    const std::string &user = getRandomUser(users_);
-    auto[ins_key, ins_manager] = node0_->insert(user);
-    auto[query_result, look_manager] = node0_->lookup(user);
-    ASSERT_TRUE(query_result.compare(user) == 0);
-    ASSERT_TRUE(ins_manager.id == look_manager.id);
+TEST_F(NodeTest, InsertLookupMailbox) {
+    for(int i = 0; i < users_.size(); i++) {
+        mail::MailBox box(users_[i], passwords_[i]);
+        auto[key, node] = node0_->insertMailbox(box);
+        auto[result, manager] = node0_->lookupMailbox(box.getOwner());
+        ASSERT_EQ(result.compare(box.getOwner()), 0);
+        ASSERT_EQ(node.id, manager.id);
+    }
 }
 
-TEST_F(DISABLED_NodeTest, BulkInsertAndLookup) {
-    for(const auto &user : users_) {
-        auto[ins_key, ins_manager] = node0_->insert(user);
-        auto[query_result, look_manager] = node0_->lookup(user);
-        ASSERT_TRUE(query_result.compare(user) == 0);
-        ASSERT_TRUE(ins_manager.id == look_manager.id);
+TEST_F(NodeTest, LookupNonExisting) {
+    mail::MailBox box("non_existing@test.com", "non_existing");
+    EXPECT_THROW(
+        node0_->lookupMailbox(box.getOwner()),
+        std::out_of_range
+    );
+}
+
+TEST_F(NodeTest, SendMessage) {
+    mail::MailBox box("send_message@test.com", "test_psw");
+    mail::MailBox box_wrong_psw("send_message@test.com", "wrong_psw");
+    mail::Message msg = getRandomMessage(box.getOwner());
+    auto[result, manager] = node0_->insertMailbox(box);
+    Client client(manager);
+    chord::MailboxMessage message, message_wrong_psw;
+    fillMailboxMessage(message, msg, box);
+    fillMailboxMessage(message_wrong_psw, msg, box_wrong_psw);
+    auto[status_wrong_psw, res_wrong_psw] = client.sendMessage<chord::MailboxMessage, chord::StatusMessage>(&message_wrong_psw, &chord::NodeService::Stub::Send);
+    ASSERT_TRUE(status_wrong_psw.ok());
+    ASSERT_FALSE(res_wrong_psw.result());
+    auto[status, res] = client.sendMessage<chord::MailboxMessage, chord::StatusMessage>(&message, &chord::NodeService::Stub::Send);
+    ASSERT_TRUE(status.ok());
+    ASSERT_TRUE(res.result());
+}
+
+TEST_F(NodeTest, GetMessages) {
+    mail::MailBox box("get_messages@test.com", "test_psw");
+    auto[result, manager] = node0_->insertMailbox(box);
+    Client client(manager);
+    std::vector<mail::Message> messages;
+    for(int i = 0; i < 10; i++) {
+        messages.push_back(getRandomMessage(box.getOwner()));
+        chord::MailboxMessage message;
+        fillMailboxMessage(message, messages[i], box);
+        auto[status, res] = client.sendMessage<chord::MailboxMessage, chord::StatusMessage>(&message, &chord::NodeService::Stub::Send);
+        ASSERT_TRUE(status.ok());
+        ASSERT_TRUE(res.result());
+    }
+    chord::Authentication req;
+    req.set_user(box.getOwner());
+    req.set_psw(mail::hashPsw("wrong_password"));
+    auto[wrong_pwd_status, wrong_pwd_mailbox] = client.sendMessage<chord::Authentication, chord::Mailbox>(&req, &chord::NodeService::Stub::Receive);
+    ASSERT_FALSE(wrong_pwd_mailbox.valid());
+    req.set_psw(box.getPassword());
+    auto[status, mailbox] = client.sendMessage<chord::Authentication, chord::Mailbox>(&req, &chord::NodeService::Stub::Receive);
+    ASSERT_TRUE(mailbox.valid());
+    ASSERT_EQ(mailbox.messages().size(), 10);
+    for(int i = 0; i < mailbox.messages().size(); i++) {
+        const chord::MailboxMessage &msg = mailbox.messages().at(i);
+        ASSERT_EQ(msg.to().compare(messages[i].to), 0);
+        ASSERT_EQ(msg.from().compare(messages[i].from), 0);
+        ASSERT_EQ(msg.subject().compare(messages[i].subject), 0);
+        ASSERT_EQ(msg.body().compare(messages[i].body), 0);
+        ASSERT_EQ(msg.date(), timeTToSeconds(messages[i].date));
     }
 }

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <gcrypt.h>
+#include <cereal/archives/binary.hpp>
 
 long long int mail::hashPsw(const std::string &str) {
     unsigned int id_length = gcry_md_get_algo_dlen(GCRY_MD_SHA1);
@@ -41,26 +42,6 @@ bool mail::Message::compare(const mail::Message &msg) const {
            (date == msg.date);
 }
 
-void mail::to_json(nlohmann::json &j, const Message &msg) {
-    j = nlohmann::json{
-        {"to", msg.to}, 
-        {"from", msg.from}, 
-        {"subject", msg.subject}, 
-        {"body", msg.body}, 
-        {"date", msg.date}, 
-        {"read", msg.read}
-    };
-}
-
-void mail::from_json(const nlohmann::json &j, Message &msg) {
-    j.at("to").get_to(msg.to);
-    j.at("from").get_to(msg.from);
-    j.at("subject").get_to(msg.subject);
-    j.at("body").get_to(msg.body);
-    j.at("date").get_to(msg.date);
-    j.at("read").get_to(msg.read);
-}
-
 std::ostream& mail::operator<<(std::ostream& os, const Message &msg) {
     os << "From: " << msg.from << std::endl
        << "To: " << msg.to << std::endl
@@ -98,12 +79,18 @@ long long int mail::MailBox::getPassword() const { return psw_; }
 
 int mail::MailBox::getSize() const { return box_.size(); }
 
+bool mail::MailBox::empty() const { return box_.empty(); }
+
 const std::vector<mail::Message>& mail::MailBox::getMessages() const {
     return box_;
 }
 
 const mail::Message& mail::MailBox::getMessage(int i) const {
     return box_.at(i);
+}
+
+void mail::MailBox::insertMessage(const std::string &to, const std::string &from, const std::string &subject, const std::string &body, std::time_t date) {
+    box_.emplace_back(to, from, subject, body, date);
 }
 
 void mail::MailBox::insertMessage(const mail::Message &msg) {
@@ -117,39 +104,31 @@ void mail::MailBox::insertMessages(const std::vector<Message> &msgs) {
 }
 
 bool mail::MailBox::saveBox(const std::string &filename) const {
-    std::ofstream f(filename);
-    if (!f.is_open()) {
+    std::ofstream os(filename);
+    if (!os.is_open()) {
         return false;
     }
-    nlohmann::json box = (*this);
-    f << box;
-    f.close();
+    cereal::BinaryOutputArchive oarchive(os);
+    oarchive(*this);
+    return true;
+}
+
+bool mail::MailBox::loadBox(const std::string &filename) {
+    std::ifstream is(filename);
+    if(!is.is_open()) {
+        return false;
+    }
+    cereal::BinaryInputArchive iarchive(is);
+    iarchive(*this);
     return true;
 }
 
 mail::MailBox mail::loadBox(const std::string &filename) {
-    std::ifstream f(filename);
-    if (!f.is_open()) {
-        return MailBox("", 0);
+    std::ifstream is(filename);
+    MailBox ret("", 0);
+    if (is.is_open()) {
+        cereal::BinaryInputArchive iarchive(is);
+        iarchive(ret);
     }
-    nlohmann::json box;
-    f >> box;
-    f.close();
-    return box.get<mail::MailBox>();
-}
-
-void mail::to_json(nlohmann::json &j, const MailBox &box) {
-    j = nlohmann::json{
-        {"owner", box.getOwner()}, 
-        {"password", box.getPassword()},
-        {"box", box.getMessages()}
-    };
-}
-    
-void mail::from_json(const nlohmann::json &j, MailBox &box) {
-    box.setOwner(j.at("owner").get<std::string>());
-    box.setPassword(j.at("password").get<long long int>());
-    for(auto &msg : j.at("box")) {
-        box.insertMessage(msg.get<mail::Message>());
-    }
+    return ret;
 }

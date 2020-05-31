@@ -21,13 +21,19 @@ configure_file("${ch_cfg}" "${CMAKE_CURRENT_BINARY_DIR}" COPYONLY)
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(mail STATIC mail.cpp)
-target_link_libraries(mail nlohmann_json::nlohmann_json ${LIBGCRYPT_LIBRARIES})
-target_include_directories(mail PUBLIC "../include/")
+target_link_libraries(mail ${LIBGCRYPT_LIBRARIES})
+target_include_directories(mail PUBLIC "../include/" "../extern/cereal/include/")
 
 add_library(chord STATIC chord.cpp ${ch_proto_srcs} ${ch_grpc_srcs})
-target_link_libraries(chord mail ${_GRPC_GRPCPP_UNSECURE} ${_PROTOBUF_LIBPROTOBUF} nlohmann_json::nlohmann_json ${LIBGCRYPT_LIBRARIES})
-target_include_directories(chord PUBLIC "../include/")
+target_link_libraries(chord mail ${_GRPC_GRPCPP_UNSECURE} ${_PROTOBUF_LIBPROTOBUF} ${LIBGCRYPT_LIBRARIES})
+target_include_directories(chord PUBLIC "../include/" "../extern/cereal/include/")
 
-add_executable(chord_server main.cpp)
+add_executable(chord_server server.cpp)
 target_link_libraries(chord_server chord)
 target_include_directories(chord_server PUBLIC "../include/")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lmenu")
+
+add_executable(chord_client client.cpp)
+target_link_libraries(chord_client chord ${CURSES_LIBRARIES})
+target_include_directories(chord_client PUBLIC "../include/" ${CURSES_INCLUDE_DIR})

@@ -7,13 +7,12 @@ service NodeService {
     rpc SearchFinger (FingerQuestion) returns (NodeInfoMessage) {}
     rpc NodeJoin (JoinRequest) returns (NodeInfoMessage) {}
     rpc Stabilize (NodeInfoMessage) returns (NodeInfoMessage) {}
-    rpc Insert (InsertMessage) returns (NodeInfoMessage) {}
     rpc InsertMailbox (InsertMailboxMessage) returns (NodeInfoMessage) {}
-    rpc Lookup (Query) returns (QueryResult) {}
     rpc LookupMailbox (QueryMailbox) returns (QueryResult) {}
     rpc Authenticate (Authentication) returns (StatusMessage) {}
     rpc Send (MailboxMessage) returns (StatusMessage) {}
-    rpc Receive (MailboxRequest) returns (Mailbox) {}
+    rpc Receive (Authentication) returns (Mailbox) {}
+    rpc Transfer (TransferMailbox) returns (StatusMessage) {}
 }
 
 message NodeInfoMessage {
@@ -32,11 +31,6 @@ message JoinRequest {
     int64 node_id = 1;
 }
 
-message InsertMessage {
-    int64 key = 1;
-    string value = 2;
-}
-
 message Authentication {
     string user = 1;
     int64 psw = 2;
@@ -51,6 +45,7 @@ message InsertMailboxMessage {
 
 message QueryMailbox {
     int64 key = 1;
+    int64 ttl = 2;
 }
 
 message MailboxMessage {
@@ -68,16 +63,17 @@ message MailboxRequest {
 }
 
 message Mailbox {
-    repeated MailboxMessage messages = 1;
-    bool valid = 2;
+    Authentication auth = 1;
+    repeated MailboxMessage messages = 2;
+    bool valid = 3;
+}
+
+message TransferMailbox {
+    repeated Mailbox boxes = 1;
 }
 
 message StatusMessage {
     bool result = 1;
-}
-
-message Query {
-    int64 key = 1;
 }
 
 message QueryResult {

@@ -104,8 +104,8 @@ TEST_F(MailTest, InsertInMailbox) {
 TEST_F(MailTest, SaveAndLoadBox) {
     mail::MailBox box = getRandomMailbox();
     box.insertMessages(getRandomMessages());
-    ASSERT_TRUE(box.saveBox("save_load_test.json"));
-    mail::MailBox box_loaded = mail::loadBox("save_load_test.json");
+    ASSERT_TRUE(box.saveBox("save_load_test.dat"));
+    mail::MailBox box_loaded = mail::loadBox("save_load_test.dat");
     ASSERT_EQ(box.getSize(), box_loaded.getSize());
     ASSERT_TRUE(box.getOwner().compare(box_loaded.getOwner()) == 0);
     for(int i = 0; i < box.getSize(); i++) {

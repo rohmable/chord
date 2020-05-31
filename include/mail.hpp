@@ -5,7 +5,8 @@
 #include <vector>
 #include <chrono>
 #include <ctime>
-#include <nlohmann/json.hpp>
+#include <cereal/types/string.hpp>
+#include <cereal/types/vector.hpp>
 
 namespace mail {
     long long int hashPsw(const std::string &str);
@@ -21,10 +22,12 @@ namespace mail {
         std::time_t date;
         bool read;
         bool compare(const Message &msg) const;
-    };
 
-    void to_json(nlohmann::json &j, const Message &msg);
-    void from_json(const nlohmann::json &j, Message &msg);
+        template<class Archive>
+        void serialize(Archive &archive) {
+            archive(to, from, subject, body, date);
+        }
+    };
 
     std::ostream& operator<<(std::ostream& os, const Message &msg);
 
@@ -39,12 +42,19 @@ namespace mail {
         void setPassword(long long int psw);
         long long int getPassword() const;
         int getSize() const;
+        bool empty() const;
         const std::vector<Message>& getMessages() const;
         const Message& getMessage(int i) const;
+        void insertMessage(const std::string &to, const std::string &from, const std::string &subject, const std::string &body, std::time_t date = std::time(nullptr));
         void insertMessage(const Message &msg);
         void insertMessages(const std::vector<Message> &msgs);
         bool saveBox(const std::string &filename) const;
         bool loadBox(const std::string &filename);
+
+        template<class Archive>
+        void serialize(Archive &archive) {
+            archive(owner_, psw_, box_);
+        }
 
     private:
         std::string owner_;
@@ -53,8 +63,6 @@ namespace mail {
     };
 
     MailBox loadBox(const std::string &filename);
-    void to_json(nlohmann::json &j, const MailBox &box);
-    void from_json(const nlohmann::json &j, MailBox &box);
 }
 
 #endif // MAIL_HPP
