@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
-#include <nlohmann/json.hpp>
+#include <cereal/archives/json.hpp>
+#include <cereal/types/vector.hpp>
+#include <cereal/types/string.hpp>
 #include <grpcpp/grpcpp.h>
 #include <cmath>
 #include <memory>
@@ -35,24 +37,14 @@ protected:
     static void SetUpTestCase() {
         ring_ = new chord::Ring("cfg.test.json");
         node0_ = ring_->getEntryNode();
-        
-        using nlohmann::json;
 
-        std::ifstream mock_file("mock_data.json");
-        json mock_data;
-        mock_file >> mock_data;
-        mock_file.close();
-        for(auto &user : mock_data.at("users")) {
-            users_.push_back(user.at("address").get<std::string>());
-        }
-        for(auto &password : mock_data.at("passwords")) {
-            passwords_.push_back(password.at("password").get<std::string>());
-        }
-        for(auto &subject : mock_data.at("subjects")) {
-            subjects_.push_back(subject.at("subject").get<std::string>());
-        }
-        for(auto &body : mock_data.at("bodies")) {
-            bodies_.push_back(body.at("body").get<std::string>());
+        {
+            std::ifstream is("mock_data.json");
+            cereal::JSONInputArchive archive(is);
+            archive(cereal::make_nvp("users", users_));
+            archive(cereal::make_nvp("passwords", passwords_));
+            archive(cereal::make_nvp("subjects", subjects_));
+            archive(cereal::make_nvp("bodies", bodies_));
         }
     }
 

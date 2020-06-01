@@ -9,34 +9,14 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -O0")
 option(BUILD_TESTS "Build tests made with googletest" ON)
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-include(FetchContent)
-find_package(Threads REQUIRED)
 find_package(libgcrypt REQUIRED)
-find_package(Protobuf CONFIG)
-find_package(gRPC)
-if(${gRPC_FOUND})
-    set(protobuf_MODULE_COMPATBILE TRUE)
-    message(STATUS "Using Protobuf ${Protobuf_VERSION}")
-    message(STATUS "Using gRPC ${gRPC_VERSION}")
-    set(_PROTOBUF_LIBPROTOBUF protobuf::libprotobuf)
-    set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
-
-    set(_GRPC_GRPCPP_UNSECURE gRPC::grpc++_unsecure)
-    set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
-else()
-    message(STATUS "Getting gRPC via FetchContent, this can take a while depending on your internet connection")
-    FetchContent_Declare(
-        gRPC
-        GIT_REPOSITORY  https://github.com/grpc/grpc
-        GIT_TAG         v1.27.3
-    )
-    FetchContent_MakeAvailable(gRPC)
-
-    set(_PROTOBUF_LIBPROTOBUF libprotobuf)
-    set(_PROTOBUF_PROTOC $<TARGET_FILE:protoc>)
-    set(_GRPC_GRPCPP_UNSECURE grpc++_unsecure)
-    set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
-endif()
+find_package(Threads REQUIRED)
+add_subdirectory("extern/grpc" EXCLUDE_FROM_ALL)
+set(_PROTOBUF_LIBPROTOBUF libprotobuf)
+set(_REFLECTION grpc++_reflection)
+set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
+set(_GRPC_GRPCPP grpc++)
+set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
 
 find_package(Curses REQUIRED)
 

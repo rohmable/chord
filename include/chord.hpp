@@ -50,6 +50,7 @@ namespace chord {
         Node(const std::string &address, int port);
         ~Node();
 
+        bool isRunning() const;
         void Run();
         void Stop();
         void join(const NodeInfo &entry_point);
@@ -75,6 +76,7 @@ namespace chord {
 
         std::pair<key_t, NodeInfo> insertMailbox(const mail::MailBox &box);
         std::pair<std::string, const NodeInfo> lookupMailbox(const std::string &owner);
+        
 
         template <class Archive>
         void serialize(Archive &archive) {
@@ -92,7 +94,7 @@ namespace chord {
 
         const NodeInfo& getFingerForKey(key_t key);
         bool isSuccessor(key_t key);
-        bool transferBoxes();
+        bool transferBoxes(const chord::NodeInfo &dest);
         bool checkAuthentication(const chord::Authentication &auth);
 
         bool run_stabilize_;
@@ -119,6 +121,7 @@ namespace chord {
         const std::vector<Node *>& getNodes() const;
         Node* getEntryNode() const;
 
+        void dot(const std::string &filename) const;
         void print(std::ostream &os) const;
         
     private:

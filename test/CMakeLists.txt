@@ -1,3 +1,4 @@
+include(FetchContent)
 find_package(GTest)
 if(GTEST_FOUND)
     message(STATUS "Using googletest")

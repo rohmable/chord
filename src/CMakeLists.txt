@@ -25,8 +25,8 @@ target_link_libraries(mail ${LIBGCRYPT_LIBRARIES})
 target_include_directories(mail PUBLIC "../include/" "../extern/cereal/include/")
 
 add_library(chord STATIC chord.cpp ${ch_proto_srcs} ${ch_grpc_srcs})
-target_link_libraries(chord mail ${_GRPC_GRPCPP_UNSECURE} ${_PROTOBUF_LIBPROTOBUF} ${LIBGCRYPT_LIBRARIES})
-target_include_directories(chord PUBLIC "../include/" "../extern/cereal/include/")
+target_link_libraries(chord mail ${_GRPC_GRPCPP} ${_PROTOBUF_LIBPROTOBUF} ${LIBGCRYPT_LIBRARIES})
+target_include_directories(chord PUBLIC "../include/" "../extern/cereal/include/" "../extern/grpc/include/")
 
 add_executable(chord_server server.cpp)
 target_link_libraries(chord_server chord)
