@@ -12,12 +12,13 @@
 #include <vector>
 #include <chrono>
 #include <random>
+#include <filesystem>
 #include <google/protobuf/util/time_util.h>
 
-#include <chord.hpp>
+#include <chord/server.hpp>
+#include <chord/client.hpp>
 #include <mail.hpp>
 #include <chord.grpc.pb.h>
-#include "test_client.hpp"
 
 void ringDot(const std::vector<chord::Node*> &ring) {
     std::ofstream dot("ring.gv");
@@ -50,22 +51,24 @@ protected:
 
     static void TearDownTestCase() {
         delete ring_;
+        std::filesystem::path bck = "181147151130138.dat";
+        std::filesystem::remove(bck);
     }
 
-    static mail::Message getRandomMessage(const std::string &to) {
+    static mail::Message getRandomMessage(const std::string &from) {
         static std::random_device dev;
         static std::mt19937 rng(dev());
         static std::uniform_int_distribution<std::mt19937::result_type> dist_users(0, users_.size() - 1);
         static std::uniform_int_distribution<std::mt19937::result_type> dist_subjects(0, subjects_.size() - 1);
         static std::uniform_int_distribution<std::mt19937::result_type> dist_bodies(0, bodies_.size() - 1);
 
-        int from_idx = dist_users(rng),
+        int to_idx = dist_users(rng),
             subject_idx = dist_subjects(rng),
             body_idx = dist_bodies(rng);
 
         return mail::Message(
-            to, 
-            users_.at(from_idx), 
+            users_.at(to_idx), 
+            from,
             subjects_.at(subject_idx),
             bodies_.at(body_idx));
     }
@@ -138,16 +141,9 @@ TEST_F(NodeTest, WithAddress) {
 
 TEST_F(NodeTest, SendPing) {
     chord::NodeInfo info = node0_->getInfo();
-    chord::PingRequest request;
-    Client client(info);
-    for (int i = 0; i < 500; i++) {
-        request.set_ping_n(i);
-        auto[result, msg] = client.sendMessage<chord::PingRequest, chord::PingReply>(&request, &chord::NodeService::Stub::Ping);
-        ASSERT_TRUE(result.ok());
-        ASSERT_EQ(msg.ping_id(), info.id);
-        ASSERT_EQ(msg.ping_ip(), info.address);
-        ASSERT_EQ(msg.ping_port(), info.port);
-        ASSERT_EQ(msg.ping_n(), i) << "Ping reply is different from what has been sent: " << msg.ping_n() << " != " << i;
+    chord::Client client(info.conn_string());
+    for(int i = 0; i < 500; i++) {
+        ASSERT_TRUE(client.ping(i));
     }
 }
 
@@ -186,15 +182,6 @@ TEST_F(NodeTest, CorrectPredecessor) {
     }
 }
 
-TEST_F(NodeTest, TestNodeJoinCorrectId) {
-    Client client(node0_->getInfo());
-    chord::JoinRequest request;
-    request.set_node_id(1234321);
-    auto[result, msg] = client.sendMessage<chord::JoinRequest, chord::NodeInfoMessage>(&request, &chord::NodeService::Stub::NodeJoin);
-    ASSERT_TRUE(result.ok());
-    ASSERT_TRUE(msg.id() >= request.node_id());
-}
-
 TEST_F(NodeTest, TestNodeJoin) {
     chord::Node *new_node = new chord::Node("127.0.0.1", 60000);
     ring_->push_back(new_node);
@@ -209,67 +196,42 @@ TEST_F(NodeTest, TestNodeJoin) {
 
 TEST_F(NodeTest, InsertLookupMailbox) {
     for(int i = 0; i < users_.size(); i++) {
-        mail::MailBox box(users_[i], passwords_[i]);
-        auto[key, node] = node0_->insertMailbox(box);
-        auto[result, manager] = node0_->lookupMailbox(box.getOwner());
-        ASSERT_EQ(result.compare(box.getOwner()), 0);
-        ASSERT_EQ(node.id, manager.id);
+        try {
+            chord::Client client(node0_->getInfo());
+            chord::NodeInfo reg = client.accountRegister({users_[i], passwords_[i]});
+            chord::NodeInfo log = client.accountLogin({users_[i], passwords_[i]});
+            ASSERT_EQ(reg.id, log.id);
+        } catch (chord::NodeException &e) {
+            FAIL() << e.what();
+        }
     }
 }
 
 TEST_F(NodeTest, LookupNonExisting) {
-    mail::MailBox box("non_existing@test.com", "non_existing");
+    chord::Client client(node0_->getInfo());
     EXPECT_THROW(
-        node0_->lookupMailbox(box.getOwner()),
-        std::out_of_range
+        client.accountLogin({"non_existing@test.com", "non_existing"}),
+        chord::NodeException
     );
 }
 
-TEST_F(NodeTest, SendMessage) {
-    mail::MailBox box("send_message@test.com", "test_psw");
-    mail::MailBox box_wrong_psw("send_message@test.com", "wrong_psw");
-    mail::Message msg = getRandomMessage(box.getOwner());
-    auto[result, manager] = node0_->insertMailbox(box);
-    Client client(manager);
-    chord::MailboxMessage message, message_wrong_psw;
-    fillMailboxMessage(message, msg, box);
-    fillMailboxMessage(message_wrong_psw, msg, box_wrong_psw);
-    auto[status_wrong_psw, res_wrong_psw] = client.sendMessage<chord::MailboxMessage, chord::StatusMessage>(&message_wrong_psw, &chord::NodeService::Stub::Send);
-    ASSERT_TRUE(status_wrong_psw.ok());
-    ASSERT_FALSE(res_wrong_psw.result());
-    auto[status, res] = client.sendMessage<chord::MailboxMessage, chord::StatusMessage>(&message, &chord::NodeService::Stub::Send);
-    ASSERT_TRUE(status.ok());
-    ASSERT_TRUE(res.result());
-}
-
-TEST_F(NodeTest, GetMessages) {
-    mail::MailBox box("get_messages@test.com", "test_psw");
-    auto[result, manager] = node0_->insertMailbox(box);
-    Client client(manager);
+TEST_F(NodeTest, SendGetMessages) {
+    chord::Client client_receiver(node0_->getInfo()),
+                  client_sender(node0_->getInfo());
+    client_receiver.accountRegister({"get_messages@test.com", "test_psw"});
+    client_sender.accountRegister({"send_messages@test.com", "test_psw"});
     std::vector<mail::Message> messages;
     for(int i = 0; i < 10; i++) {
-        messages.push_back(getRandomMessage(box.getOwner()));
-        chord::MailboxMessage message;
-        fillMailboxMessage(message, messages[i], box);
-        auto[status, res] = client.sendMessage<chord::MailboxMessage, chord::StatusMessage>(&message, &chord::NodeService::Stub::Send);
-        ASSERT_TRUE(status.ok());
-        ASSERT_TRUE(res.result());
+        mail::Message msg = getRandomMessage("send_messages@test.com");
+        msg.to = "get_messages@test.com";
+        messages.push_back(msg);
+        client_sender.send(msg);
     }
-    chord::Authentication req;
-    req.set_user(box.getOwner());
-    req.set_psw(mail::hashPsw("wrong_password"));
-    auto[wrong_pwd_status, wrong_pwd_mailbox] = client.sendMessage<chord::Authentication, chord::Mailbox>(&req, &chord::NodeService::Stub::Receive);
-    ASSERT_FALSE(wrong_pwd_mailbox.valid());
-    req.set_psw(box.getPassword());
-    auto[status, mailbox] = client.sendMessage<chord::Authentication, chord::Mailbox>(&req, &chord::NodeService::Stub::Receive);
-    ASSERT_TRUE(mailbox.valid());
-    ASSERT_EQ(mailbox.messages().size(), 10);
-    for(int i = 0; i < mailbox.messages().size(); i++) {
-        const chord::MailboxMessage &msg = mailbox.messages().at(i);
-        ASSERT_EQ(msg.to().compare(messages[i].to), 0);
-        ASSERT_EQ(msg.from().compare(messages[i].from), 0);
-        ASSERT_EQ(msg.subject().compare(messages[i].subject), 0);
-        ASSERT_EQ(msg.body().compare(messages[i].body), 0);
-        ASSERT_EQ(msg.date(), timeTToSeconds(messages[i].date));
+
+    ASSERT_TRUE(client_receiver.getMessages());
+    auto messages_rec = client_receiver.getBox().getMessages();
+    ASSERT_EQ(messages_rec.size(), 10);
+    for(int i = 0; i < messages_rec.size(); i++) {    
+        ASSERT_TRUE(messages_rec[i].compare(messages[i]));
     }
 }

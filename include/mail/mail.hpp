@@ -43,8 +43,10 @@ namespace mail {
         long long int getPassword() const;
         int getSize() const;
         bool empty() const;
+        void clear();
         const std::vector<Message>& getMessages() const;
         const Message& getMessage(int i) const;
+        bool removeMessage(int i);
         void insertMessage(const std::string &to, const std::string &from, const std::string &subject, const std::string &body, std::time_t date = std::time(nullptr));
         void insertMessage(const Message &msg);
         void insertMessages(const std::vector<Message> &msgs);

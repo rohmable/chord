@@ -81,12 +81,24 @@ int mail::MailBox::getSize() const { return box_.size(); }
 
 bool mail::MailBox::empty() const { return box_.empty(); }
 
+void mail::MailBox::clear() { box_.clear(); }
+
 const std::vector<mail::Message>& mail::MailBox::getMessages() const {
     return box_;
 }
 
 const mail::Message& mail::MailBox::getMessage(int i) const {
     return box_.at(i);
+}
+
+bool mail::MailBox::removeMessage(int i) {
+    auto it = std::next(box_.begin(), i);
+    if(it != box_.end()) {
+        box_.erase(it);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void mail::MailBox::insertMessage(const std::string &to, const std::string &from, const std::string &subject, const std::string &body, std::time_t date) {

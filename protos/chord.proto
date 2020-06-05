@@ -8,18 +8,18 @@ service NodeService {
     rpc NodeJoin (JoinRequest) returns (NodeInfoMessage) {}
     rpc Stabilize (NodeInfoMessage) returns (NodeInfoMessage) {}
     rpc InsertMailbox (InsertMailboxMessage) returns (NodeInfoMessage) {}
-    rpc LookupMailbox (QueryMailbox) returns (QueryResult) {}
-    rpc Authenticate (Authentication) returns (StatusMessage) {}
-    rpc Send (MailboxMessage) returns (StatusMessage) {}
+    rpc LookupMailbox (QueryMailbox) returns (NodeInfoMessage) {}
+    rpc Authenticate (Authentication) returns (Empty) {}
+    rpc Send (MailboxMessage) returns (Empty) {}
+    rpc Delete (DeleteMessage) returns (Empty) {}
     rpc Receive (Authentication) returns (Mailbox) {}
-    rpc Transfer (TransferMailbox) returns (StatusMessage) {}
+    rpc Transfer (TransferMailbox) returns (Empty) {}
 }
 
 message NodeInfoMessage {
     string ip = 1;
     int32 port = 2;
     int64 id = 3;
-    bool cutoff = 4;
 }
 
 message FingerQuestion {
@@ -37,14 +37,13 @@ message Authentication {
 }
 
 message InsertMailboxMessage {
-    int64 key = 1;
-    string owner = 2;
-    int64 password = 3;
-    int64 ttl = 4;
+    string owner = 1;
+    int64 password = 2;
+    int64 ttl = 3;
 }
 
 message QueryMailbox {
-    int64 key = 1;
+    string owner = 1;
     int64 ttl = 2;
 }
 
@@ -55,6 +54,13 @@ message MailboxMessage {
     string subject = 4;
     string body = 5;
     int64 date = 6;
+    int64 ttl = 7;
+}
+
+message DeleteMessage {
+    Authentication auth = 1;
+    int64 idx = 2;
+    int64 ttl = 3;
 }
 
 message MailboxRequest {
@@ -65,21 +71,10 @@ message MailboxRequest {
 message Mailbox {
     Authentication auth = 1;
     repeated MailboxMessage messages = 2;
-    bool valid = 3;
 }
 
 message TransferMailbox {
     repeated Mailbox boxes = 1;
-}
-
-message StatusMessage {
-    bool result = 1;
-}
-
-message QueryResult {
-    NodeInfoMessage manager = 1;
-    int64 key = 2;
-    string value = 3;
 }
 
 message Empty { }

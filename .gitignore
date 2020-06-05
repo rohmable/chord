@@ -68,3 +68,5 @@ _deps
 
 build/
 .vscode/
+doc/html/
+doc/latex/

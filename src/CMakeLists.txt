@@ -19,21 +19,33 @@ set(ch_cfg "${CMAKE_SOURCE_DIR}/cfg/cfg.json")
 configure_file("${ch_cfg}" "${CMAKE_CURRENT_BINARY_DIR}" COPYONLY)
 
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
+set(MAIL_INCLUDE_DIR "../include/mail")
 add_library(mail STATIC mail.cpp)
 target_link_libraries(mail ${LIBGCRYPT_LIBRARIES})
-target_include_directories(mail PUBLIC "../include/" "../extern/cereal/include/")
+target_include_directories(mail PUBLIC ${MAIL_INCLUDE_DIR} "../extern/cereal/include/")
 
-add_library(chord STATIC chord.cpp ${ch_proto_srcs} ${ch_grpc_srcs})
-target_link_libraries(chord mail ${_GRPC_GRPCPP} ${_PROTOBUF_LIBPROTOBUF} ${LIBGCRYPT_LIBRARIES})
-target_include_directories(chord PUBLIC "../include/" "../extern/cereal/include/" "../extern/grpc/include/")
+set(CHORD_INCLUDE_DIR "../include/chord")
+add_library(chord STATIC server.cpp client.cpp ${ch_proto_srcs} ${ch_grpc_srcs})
+target_link_libraries(chord mail ${_GRPC_GRPCPP} ${_PROTOBUF_LIBPROTOBUF} ${LIBGCRYPT_LIBRARIES} ${CURSES_LIBRARIES})
+target_include_directories(chord PUBLIC "../include/" ${CHORD_INCLUDE_DIR} "../extern/cereal/include/" "../extern/grpc/include/" ${CURSES_INCLUDE_DIR})
 
-add_executable(chord_server server.cpp)
+add_executable(chord_server chord_server.cpp)
 target_link_libraries(chord_server chord)
 target_include_directories(chord_server PUBLIC "../include/")
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lmenu")
+set(GUI_SRCS clientmainwindow.cpp clientlogin.cpp mailwidget.cpp clientsend.cpp)
+set(GUI_HEADERS ../include/gui/clientmainwindow.hpp ../include/gui/clientlogin.hpp ../include/gui/mailwidget.hpp ../include/gui/clientsend.hpp)
+set(GUI_UI clientmainwindow.ui mailwidget.ui clientlogin.ui clientsend.ui)
 
-add_executable(chord_client client.cpp)
-target_link_libraries(chord_client chord ${CURSES_LIBRARIES})
-target_include_directories(chord_client PUBLIC "../include/" ${CURSES_INCLUDE_DIR})
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+qt5_wrap_cpp(chord_client_SRC ${GUI_HEADERS})
+qt5_wrap_ui(chord_client_UI ${GUI_UI})
+
+add_executable(chord_client ${GUI_SRCS} ${chord_client_SRC} ${chord_client_UI})
+target_link_libraries(chord_client chord Qt5::Widgets)
+target_include_directories(chord_client PUBLIC "../include/")
