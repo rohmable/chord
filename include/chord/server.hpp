@@ -16,6 +16,7 @@
 namespace chord {
     /**
      * Hash function used to generate keys.
+     * The function uses a SHA-1 algorithm.
      * These hashes are in the range [0, 2^M)
      * 
      * @param str string to hash
@@ -25,7 +26,6 @@ namespace chord {
 
     /**
      * Handles all node's backend operations.
-     * 
     */
     class Node final : public NodeService::Service {
     public:
@@ -46,6 +46,7 @@ namespace chord {
          * @param port ip port that the node will answer to 
         */
         Node(const std::string &address, int port);
+        
         /**
          * Destructor, refer to Stop method to check the work done.
         */

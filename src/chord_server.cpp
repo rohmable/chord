@@ -32,7 +32,6 @@ int main(int argc, char *argv[]) {
     init_pair(1, COLOR_RED, COLOR_BLACK);
     timeout(1000);
     chord::Ring ring("cfg.json");
-    ring.dot("ring.gv");
     auto nodes = ring.getNodes();
     while(true) {
         clear();

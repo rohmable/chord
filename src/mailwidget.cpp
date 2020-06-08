@@ -47,7 +47,7 @@ mail::Message MailWidget::getMessage() {
                 subject(ui->subject->text().toStdString()),
                 body(ui->body->toPlainText().toStdString());
     time_t date = time(nullptr);
-    return {to, from, subject, body};
+    return {to, from, subject, body, date};
 }
 
 void MailWidget::clearContent() {

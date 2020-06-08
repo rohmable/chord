@@ -82,7 +82,7 @@ bool chord::Client::getMessages() {
     box_->clear();
     for(int i = 0; i < mailbox.messages_size(); i++) {
         const MailboxMessage &msg = mailbox.messages().at(i);
-        box_->insertMessage(msg.to(), msg.from(), msg.subject(), msg.body(), secondsToTimeT(msg.date()));
+        box_->insertMessage({msg.to(), msg.from(), msg.subject(), msg.body(), secondsToTimeT(msg.date())});
     }
     return true;
 }

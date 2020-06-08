@@ -35,6 +35,14 @@ add_executable(chord_server chord_server.cpp)
 target_link_libraries(chord_server chord)
 target_include_directories(chord_server PUBLIC "../include/")
 
+add_executable(node_server node_server.cpp)
+target_link_libraries(node_server chord)
+target_include_directories(node_server PUBLIC "../include")
+
+add_executable(load_mock_data load_mock_data.cpp)
+target_link_libraries(load_mock_data chord)
+target_include_directories(load_mock_data PUBLIC "../include" "../extern/cereal/include/")
+
 set(GUI_SRCS clientmainwindow.cpp clientlogin.cpp mailwidget.cpp clientsend.cpp)
 set(GUI_HEADERS ../include/gui/clientmainwindow.hpp ../include/gui/clientlogin.hpp ../include/gui/mailwidget.hpp ../include/gui/clientsend.hpp)
 set(GUI_UI clientmainwindow.ui mailwidget.ui clientlogin.ui clientsend.ui)

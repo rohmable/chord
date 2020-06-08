@@ -1,0 +1,100 @@
+/*! \mainpage Chord
+ *
+ * \section intro_sec Introduction
+ *
+ * This project uses the <b>Chord</b> algorithm to implement a simple <b>mail</b> system where the server
+ * is not centralized and nodes can be added and removed as needed.
+ *
+ * \section algorithm_sec Algorithm
+ *
+ * The Chord algorithm is a peer-to-peer algorithm that can implement a distributed hash table.
+ *
+ * A distributed hash table (DHT) handles key-value pairs where data (the value) can be associated to a key and later retrieved.
+ * In an hash table there are three primitive operations done one these \f$ (k, v) \f$ pairs:
+ *  - <b>Insert</b>: a \f$ (k, v) \f$ is pushed inside the hash table
+ *  - <b>Search</b>: given a key \f$ k \f$ the table returns the associated value \f$ v \f$ (if exists)
+ *  - <b>Delete</b>: a \f$ (k, v) \f$ pair is removed from the hash table
+ *
+ * The difference between an hash table and a <i>distributed</i> hash table is that these pairs are distributed among different
+ * nodes and these nodes are not known and their number can change dinamically with time.
+ *
+ * In this algorithm each node has an identifier number of \f$ m \f$ bits. These ids are the result of a hashing function (usually SHA-1) and
+ * will belong to a <b>circular space</b> of \f$ [0, 2^m - 1] \f$, this means that the extremes of this space will be connected toghether, forming a
+ * <b>ring</b> and each node has a pointer to his <b>successor</b>.
+ *
+ * The keys will also be hashed to the same space, in this way we can associate each key to a node, called his <b>successor node</b> that is the first
+ * node where \f$ Node ID \geq key \f$.
+ *
+ * With these rules we can then implement the primitives above by starting from any node in the ring and then forwarding the request through
+ * each successor until we reach the successor node for the given key and then go back with the value if we're doing a search or inserting/deleting
+ * the pair.
+ *
+ * To avoid to forward the request to each successor we can also build for every node a <b>finger table</b>, this table is composed of \f$ m \f$ 
+ * rows and each row contains the Node ID of the first node that has \f$ id \geq i + 2^{j-1}\ mod\ 2^m \f$ where \f$ i \f$ is the id of the node
+ * that is building his finger table. Doing this we can considerably shrink the number of requests by <b>jumping</b> through the ring forwarding the request
+ * to the last node that has an id <b>smaller</b> than the key we're searching, reducing the number of steps to find the key to \f$ O(logN) \f$ with N
+ * as the number of the nodes inside the ring.
+ *
+ * Being a distributed hash table the algorithm must permit other nodes to <b>join</b> and <b>leave</b> the ring.
+ * The join operation is done by initializing the new node's pointer to the successor and also we keep a pointer to the predecessor
+ * so we can correctly notify everyone of the new node joining.
+ * We also periodically run a procedure called <b>Stabilize</b> where a node \f$ i \f$ asks his successor \f$ n \f$ for his predecessor \f$ p \f$,
+ * if the pointers are not updated then \f$ n \f$'s predecessor could be smaller than \f$ i \f$, in this case he updates it with the new id. \f$ n \f$
+ * then answers with his predecessor \f$ p' \f$ that can be \f$ i \f$ if the pointers are correct but it also can be a different id, 
+ * in this case \f$ i \f$ has a chance to update his successor pointer to \f$ p' \f$.
+ * By the end of this procedure we can assume that \f$ i \f$ and \f$ n \f$ pointers are updated.
+ *
+ * More informations about the specifics of this algorithm can be found in 
+ * <a href="https://pdos.csail.mit.edu/papers/ton:chord/paper-ton.pdf">this article</a> by I. Stoica, R. Morris et al. that also explains node departures
+ * and fail recoveries.
+ *
+ * \section design_sec Design
+ *
+ * In this project's case we use the Chord algorithm to implement a series of <b>mail servers</b> that work toghether to balance their load and
+ * exchange messages to deliver mail.
+ *
+ * Each node implements a series of services to function correctly:
+ *  - <b>Ping</b>: service used to check if a node is online
+ *  - <b>SearchFinger</b>: used to build the finger table, a node is returned for a given key
+ *  - <b>NodeJoin</b>: used by a node to join the ring, it returns the node that should be the successor of the calling node
+ *  - <b>Stabilize</b>: first part of the stabilize procedure, the predecessor node is returned
+ *  - <b>LookupMailbox</b>: search primitive for the DHT
+ *  - <b>InsertMailbox</b>: insert primitive for the DHT
+ *  - <b>Delete</b>: delete primitive for the DHT
+ *  - <b>Transfer</b>: used to transfer multiple mailboxes between nodes
+ *  - <b>Authenticate</b>: authentication service used by the nodes to check if a combination of address and password is correct
+ *  - <b>Send</b>: sends a mail message
+ *  - <b>Receive</b>: returns the messages of a mailbox
+ *
+ * These services are implemented in a Node class that handles all the communication steps and also the technicalities
+ * required by the system and the algorithm however the mail part is in a separated module, this is done to re-use the same components
+ * also for the client module, that gives an interface to a desktop application to operate with this system.
+ *
+ * Each node's id is given by <b>hashing</b> the combination of ip address and network port, this is already a pretty much unique identifier of
+ * a process and permits to execute <b>multiple nodes</b> on the same machine without the use of multiple network cards or virtual machines.
+ * The same process is done to extract a key from a mailbox, the <b>mailbox owner</b> is considered as a unique identifier and then the string is
+ * hashed and used as an id. This id will be later used to find which node is the successor node for a given mailbox, the <b>client</b> can then connect 
+ * to it and operate on the mailbox using the services listed above.
+ *
+ * The project is composed by three executables:
+ *  - <b>chord_server</b>: builds a ring from a JSON file called <i>cfg.json</i>
+ *  - <b>node_server</b>: builds a single node and inserts it into the ring
+ *  - <b>chord_client</b>: client used to send and receive mail
+ *
+ * \section tech_sec Technology
+ *
+ * The language used is C++17 to reduce the server-side overhead.
+ *
+ * For the <b>communication</b> between nodes and between node and client <a href="https://grpc.io/">gRPC</a> is used, this framework is well-tested
+ * and used in big production environments and provides a more modern <b>interface</b> using 
+ * <a href="https://developers.google.com/protocol-buffers">Protocol Buffers</a> to exchange data, in this way the definition of the messages
+ * fields and services is separated from the actual code that runs it, also the data translation from a machine to another is transparent to the
+ * programmer and provides support to STL data types such as std::string.
+ *
+ * The <b>hashing</b> functions are provided by <a href="https://gnupg.org/software/libgcrypt/index.html">libgcrypt</a>, this library was preferred
+ * among others just because is usually already installed on linux environments and is pretty lightweight compared to others.
+ * The library is used for the Node id and key but also to hash the mailboxes' passwords.
+ *
+ * The client uses the <a href="https://www.qt.io/">Qt</a> toolkit and the server uses <a href="https://invisible-island.net/ncurses/">ncurses</a>
+ * for the user interface.
+ */-
